@@ -1,0 +1,93 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Question we are trying to answer: what is the average rent for a 1b/1b by district? same for 2b/2b, etc. etc.
+
+
+#load necessary libraries
+```{r}
+library(tidyverse)
+```
+#import/read csv file that our group chose
+# i got a message to put the code at the end 
+
+
+```{r}
+df <- read_csv("sf_clean.csv", show_col_types = FALSE)
+```
+
+# Calculate average rent grouped by beds
+
+```{r}
+avg_rent_beds <- df %>%
+  group_by(beds) %>%
+  summarize(avg_rent = mean(price, na.rm = TRUE), .groups = "drop")
+```
+
+
+#view results 
+
+```{r}
+print(avg_rent_beds)
+```
+# create a plot: average rent by unit type and  district
+
+```{r}
+ggplot(avg_rent_beds, aes(x = factor(beds), y = avg_rent, fill = factor(beds))) +
+  geom_col() +
+  labs(
+    title = "Average Rent by Number of Bedrooms",
+    x = "Bedrooms",
+    y = "Average Rent (USD)",
+    fill = "Bedrooms"
+  ) +
+  theme_minimal()
+```
+#Create a comparison table of average rooms and distract
+
+```{r}
+avg_rent_table <- df %>%
+  group_by(beds, hood_district) %>%
+  summarize(avg_rent = mean(price, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(
+    names_from = hood_district,
+    values_from = avg_rent,
+    names_prefix = "District_"
+  )
+
+```
+
+#View the results
+
+```{r}
+print(avg_rent_table)
+```
+
+#Check to see if these prices are ststaically significant, for example with 1bedroom.
+#filter 1bedroom results
+```{r}
+df_1bed <- df %>% filter(beds == 1)
+
+```
+
+# Check distribution of sample sizes by district
+
+```{r}
+table(df_1bed$hood_district)
+```
+# Run ANOVA to compare mean rent across districts
+```{r}
+anova_result <- aov(price ~ factor(hood_district), data = df_1bed)
+```
+
+#View results
+```{r}
+summary(anova_result)
+
+```
+
+# interpretation
+P value is much less than 0.05, meaning. There is a statistically significant difference in average 1-bedroom rent across districts.
+

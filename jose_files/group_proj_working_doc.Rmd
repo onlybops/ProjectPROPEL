@@ -1,0 +1,110 @@
+---
+title: "group proj JC working doc"
+output: html_notebook
+---
+
+```{r Libraries}
+library(tidyverse) # general language library
+library(ggplot2) # for easier plotting
+library(leaflet) # also for mapping
+library(sf) # for mapping
+```
+
+# Color Palettes for Mapping & Visualizations Later
+```{r color palettes, echo=FALSE}
+safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#332288", "#AA4499", 
+                             "#44AA99", "#999933", "#882255", "#661100", "#6699CC", "#888888")
+```
+
+# Creating a base San Francisco map for later
+```{r practicing mapping}
+# load in SF map data (via sf package)
+
+#geojson file from https://github.com/MissionLocal/interactives/blob/main/docs/redistricting-map-final/FinalDraftMap.geojson
+# this gonna be the final map because it does not have all the extra shit
+sf_district_map <- st_read("/Users/olivercollado/Library/CloudStorage/OneDrive-Personal/Work.Academic/R Files/Spring 2025 Propel Stats Class/Group Project/FinalDraftMap.geojson")
+
+# edited file to remove duplicate / extra district areas
+sf_district_map_clean <- st_read("/Users/olivercollado/Library/CloudStorage/OneDrive-Personal/Work.Academic/R Files/Spring 2025 Propel Stats Class/Group Project/FinalDraftMap_copy.geojson")
+
+# in order to get the correct district order, we have to change the levels
+sf_district_map$DISTRICT <- factor(sf_district_map$DISTRICT , levels=c('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'))
+
+sf_district_map_clean$DISTRICT <- factor(sf_district_map_clean$DISTRICT , levels=c('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'))
+
+# using geom_sf_labels here gives us weird prints with 2 and 6 bc of duplicates
+ggplot(sf_district_map) +
+  geom_sf(color = "black",aes(fill = factor(DISTRICT))) +
+  scale_fill_manual(values = safe_colorblind_palette, name= "SF District") +
+   geom_sf_label(aes(label = DISTRICT)) +
+  theme_void()
+
+#fixed file here removes extra labels
+ggplot(sf_district_map_clean) +
+  geom_sf(color = "black",aes(fill = factor(DISTRICT)), show.legend = FALSE) +
+  scale_fill_manual(values = safe_colorblind_palette, name= "SF District") +
+  geom_sf_label(aes(label = DISTRICT)) +
+  theme_void()
+```
+
+
+
+```{r}
+#load in our data
+sf_housing_data <- read_csv("sf_clean.csv")
+
+# add new price_per_sqft column
+sf_housing_data <- sf_housing_data %>%
+  mutate(price_per_sqft = (price/sqft)) %>%
+  print()
+
+# rename column for inner_join later on
+ sf_housing_data <- rename(sf_housing_data, DISTRICT = hood_district)
+
+```
+
+```{r summary stats }
+# to define district order
+sf_housing_data$DISTRICT <- factor(sf_housing_data$DISTRICT , levels=c('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'))
+
+#summary across districts
+sf_district_housing_summary <- sf_housing_data %>%
+  group_by(DISTRICT) %>%
+  summarise(avg_ppsf = mean(price_per_sqft),avg_price = mean(price),avg_sf = mean(sqft), avg_bed = mean(beds), avg_bath = mean(bath))
+
+# to see districts as characters, not numbers
+sf_housing_data$DISTRICT <- as.character(sf_housing_data$DISTRICT)
+sf_housing_data$beds <- as.character(sf_housing_data$beds)
+sf_housing_data$bath <- as.character(sf_housing_data$bath)
+
+# let's look at avg price per district
+sf_housing_data %>%
+  group_by(DISTRICT) %>%
+  ggplot() +
+    geom_boxplot(mapping = aes(y = DISTRICT, x = price, color = DISTRICT)) + 
+    scale_color_manual(values = safe_colorblind_palette) +
+    theme(legend.position = "none")
+
+#testing graph to see whatever variable
+sf_housing_data %>%
+  ggplot() +
+    geom_boxplot(mapping = aes(y = housing_type, x = price_per_sqft, color = housing_type)) + 
+    scale_color_manual(values = safe_colorblind_palette) +
+    theme(legend.position = "none")
+```
+
+
+# Visualiztions with the Map
+```{r}
+#make one master district file
+sf_district_map_summary <- sf_district_map_clean %>%
+  inner_join(sf_district_housing_summary, by = "DISTRICT")
+  
+# let's see if we can map some shit
+ggplot(sf_district_map_summary) +
+  geom_sf(color = "black",aes(fill = avg_ppsf), show.legend = TRUE) +
+  geom_sf_label(aes(label = DISTRICT)) +
+  scale_fill_gradient(low = "#a661d3", high = "lavender") +
+  theme_void()
+```
+

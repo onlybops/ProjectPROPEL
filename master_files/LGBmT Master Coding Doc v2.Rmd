@@ -130,17 +130,13 @@ sf_housing_data %>%
 #summary across districts
 sf_district_housing_summary <- sf_housing_data %>%
   group_by(DISTRICT) %>%
-  summarise(avg_ppsf = mean(price_per_sqft),avg_price = mean(price),avg_sf = mean(sqft), avg_bed = mean(beds), avg_bath = mean(bath)) %>%
-  mutate(DISTRICT = as.numeric(as.character(DISTRICT))) %>%  # Ensure numeric sorting
-  arrange(DISTRICT)
+  summarise(avg_ppsf = mean(price_per_sqft),avg_price = mean(price),avg_sf = mean(sqft), avg_bed = mean(beds), avg_bath = mean(bath))
 
 #summary for 1 bed units across districts
 sf_district_housing_summary_1bed <- sf_housing_data %>%
   group_by(DISTRICT) %>%
   filter(beds == "1") %>%
-  summarise(avg_ppsf = mean(price_per_sqft),avg_price = mean(price),avg_sf = mean(sqft), avg_bed = mean(beds), avg_bath = mean(bath)) %>%
-  mutate(DISTRICT = as.numeric(as.character(DISTRICT))) %>%  # Ensure numeric sorting
-  arrange(DISTRICT)
+  summarise(avg_ppsf = mean(price_per_sqft),avg_price = mean(price),avg_sf = mean(sqft), avg_bed = mean(beds), avg_bath = mean(bath))
 
 # count of 1beds by district
 sf_1bed_count <- df_1bed %>%
@@ -150,6 +146,10 @@ sf_1bed_count <- df_1bed %>%
 
 # to see districts as characters, not numbers
 sf_1bed_count$DISTRICT <- as.character(sf_1bed_count$DISTRICT)
+
+#make one master district file for all units
+sf_district_map_summary <- sf_district_map_clean %>%
+  inner_join(sf_district_housing_summary, by = "DISTRICT")
 
 #make one master district file for 1bed units
 sf_district_map_summary_1bed <- sf_district_map_clean %>%

@@ -1,0 +1,257 @@
+---
+title: "Pets_PlotsforMap_May25_LBR"
+author: "Lorena Benitez-Rivera"
+date: "2025-05-15"
+output: html_document
+---
+
+```{r Libraries}
+library(tidyverse) # general language library
+library(ggplot2) # for easier plotting
+library(leaflet) # also for mapping
+library(sf) # for mapping
+library(broom) # for tidy stats output
+library(ggpubr)
+library(ggforce)
+```
+
+# Color Palettes for Mapping & Visualizations Later
+```{r color palettes, echo=FALSE}
+safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#332288", "#AA4499", 
+                             "#44AA99", "#999933", "#882255", "#661100", "#6699CC", "#888888")
+```
+
+# Creating a base San Francisco map for later
+```{r practicing mapping}
+# load in SF map data (via sf package)
+
+#geojson file from https://github.com/MissionLocal/interactives/blob/main/docs/redistricting-map-final/FinalDraftMap.geojson
+# this gonna be the final map because it does not have all the extra shit
+sf_district_map <- st_read("FinalDraftMap.geojson")
+
+# edited file to remove duplicate / extra district areas
+sf_district_map_clean <- st_read("FinalDraftMap_copy.geojson")
+
+# in order to get the correct district order, we have to change the levels
+sf_district_map$DISTRICT <- factor(sf_district_map$DISTRICT , levels=c('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'))
+
+sf_district_map_clean$DISTRICT <- factor(sf_district_map_clean$DISTRICT , levels=c('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'))
+
+# using geom_sf_labels here gives us weird prints with 2 and 6 bc of duplicates
+ggplot(sf_district_map) +
+  geom_sf(color = "black",aes(fill = factor(DISTRICT))) +
+  scale_fill_manual(values = safe_colorblind_palette, name= "SF District") +
+   geom_sf_label(aes(label = DISTRICT)) +
+  theme_void()
+
+#fixed file here removes extra labels
+ggplot(sf_district_map_clean) +
+  geom_sf(color = "black",aes(fill = factor(DISTRICT)), show.legend = FALSE) +
+  scale_fill_manual(values = safe_colorblind_palette, name= "SF District") +
+  geom_sf_label(aes(label = DISTRICT)) +
+  theme_void()
+```
+
+
+
+```{r}
+#load in our data
+sf_housing_data <- read_csv("sf_clean.csv")
+
+# add new price_per_sqft column
+sf_housing_data <- sf_housing_data %>%
+  mutate(price_per_sqft = (price/sqft)) %>%
+  print()
+
+# rename column for inner_join later on
+ sf_housing_data <- rename(sf_housing_data, DISTRICT = hood_district)
+
+```
+
+```{r summary stats }
+# to define district order
+sf_housing_data$DISTRICT <- factor(sf_housing_data$DISTRICT , levels=c('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'))
+
+#summary across districts
+sf_district_housing_summary <- sf_housing_data %>%
+  group_by(DISTRICT) %>%
+  summarise(avg_ppsf = mean(price_per_sqft),avg_price = mean(price),avg_sf = mean(sqft), avg_bed = mean(beds), avg_bath = mean(bath))
+
+# to see districts as characters, not numbers
+sf_housing_data$DISTRICT <- as.character(sf_housing_data$DISTRICT)
+sf_housing_data$beds <- as.character(sf_housing_data$beds)
+sf_housing_data$bath <- as.character(sf_housing_data$bath)
+
+# let's look at avg price per district
+sf_housing_data %>%
+  group_by(DISTRICT) %>%
+  ggplot() +
+    geom_boxplot(mapping = aes(y = DISTRICT, x = price, color = DISTRICT)) + 
+    scale_color_manual(values = safe_colorblind_palette) +
+    theme(legend.position = "none")
+
+#testing graph to see whatever variable
+sf_housing_data %>%
+  ggplot() +
+    geom_boxplot(mapping = aes(y = housing_type, x = price_per_sqft, color = housing_type)) + 
+    scale_color_manual(values = safe_colorblind_palette) +
+    theme(legend.position = "none")
+```
+
+
+# Visualiztions with the Map
+```{r}
+#make one master district file
+sf_district_map_summary <- sf_district_map_clean %>%
+  inner_join(sf_district_housing_summary, by = "DISTRICT")
+  
+# let's see if we can map some shit
+ggplot(sf_district_map_summary) +
+  geom_sf(color = "black",aes(fill = avg_ppsf), show.legend = TRUE) +
+  geom_sf_label(aes(label = DISTRICT)) +
+  scale_fill_gradient(low = "#a661d3", high = "lavender") +
+  theme_void()
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Clean pets column to standardize values
+sf_housing_data <- sf_housing_data %>%
+  mutate(pets_clean = sub("^\\([a-z]\\)\\s*", "", pets))
+```
+
+```{r}
+# Filter for realistic price range
+pets_filtered <- sf_housing_data %>%
+  filter(price >= 0 & price <= 7000)
+```
+
+```{r}
+# Calculate percentages for legend labels
+pet_percentages <- pets_filtered %>%
+  count(pets_clean) %>%
+  mutate(percentage = round(n / sum(n) * 100, 1),
+         pets_label = paste0(pets_clean, " (", percentage, "%)"))
+```
+
+
+```{r}
+# Merge percentage labels back to main data
+pets_filtered <- pets_filtered %>%
+  left_join(pet_percentages, by = "pets_clean")
+```
+
+```{r}
+# Plot
+ggplot(pets_filtered, aes(x = pets_label, y = price, fill = pets_label)) +
+  geom_boxplot() +
+  labs(
+    title = "Listing Price by Pet Acceptance", #(Up to $7,000)
+    x = "Pet Acceptance",
+    y = "Listing Price (USD)",
+    fill = "Pets Allowed"
+  ) +
+  scale_y_continuous(labels = scales::dollar, limits = c(0, 7000)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+```{r}
+# Set district as a factor in numeric order
+sf_housing_data$DISTRICT <- factor(sf_housing_data$DISTRICT, levels = as.character(1:11))
+
+```
+
+
+```{r}
+# Clean up the pet acceptance column
+sf_housing_data <- sf_housing_data %>%
+  mutate(pets_clean = sub("^\\([a-z]\\)\\s*", "", pets)) %>%
+  filter(price <= 7000)  # optional limit to match prior visuals
+```
+```{r}
+
+# Optional: define consistent order for pets_clean levels
+sf_housing_data$pets_clean <- factor(
+  sf_housing_data$pets_clean,
+  levels = c("both", "cats", "dogs", "no pets")
+)
+```
+
+
+```{r}
+# Plot boxplot by pet acceptance, ordered by district
+ggplot(sf_housing_data, aes(x = pets_clean, y = price, fill = pets_clean)) +
+  geom_boxplot(outlier.size = 0.5, alpha = 0.8) +
+  facet_wrap(~DISTRICT, scales = "free_y", ncol = 4) +
+  scale_fill_manual(
+    values = c("both" = "#CC6677", "cats" = "#999933", "dogs" = "#44AA99", "no pets" = "#8888CC"),
+    name = "Pet Policy"
+  ) +
+  labs(
+    title = "Rent Price by Pet Acceptance Across SF Districts",
+    x = "Pet Acceptance",
+    y = "Price (USD)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  ) +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+```{r}
+# Run ANOVA for each district and store results
+anova_results <- sf_housing_data %>%
+  filter(!is.na(price), !is.na(pets_clean)) %>%
+  group_by(DISTRICT) %>%
+  do(tidy(aov(price ~ pets_clean, data = .)))
+print(anova_results)
+
+```
+
+```{r}
+# Filter ANOVA summary for the pets_clean effect
+anova_summary <- anova_results %>%
+  filter(term == "pets_clean")
+
+print(anova_summary)
+```
+
+
+```{r}
+ggplot(sf_housing_data, aes(x = pets_clean, y = price, fill = pets_clean)) +
+  geom_boxplot(alpha = 0.8) +
+  facet_wrap(~DISTRICT, scales = "free_y", ncol = 4) +
+  scale_fill_manual(
+    values = c("both" = "#CC6677", "cats" = "#999933", "dogs" = "#44AA99", "no pets" = "#8888CC"),
+    name = "Pet Policy"
+  ) +
+  stat_compare_means(
+    method = "anova",
+    aes(label = paste0("p-value = ", ..p.format.., " ", ..p.signif..))
+  ) +  # p-value and significance stars on top of each panel
+  labs(
+    title = "Rent Price by Pet Acceptance Across SF Districts",
+    x = "Pet Acceptance",
+    y = "Price (USD)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text.x = element_text(angle = 20, hjust = 1)
+  ) +
+  scale_y_continuous(labels = scales::dollar)
+
+```
+

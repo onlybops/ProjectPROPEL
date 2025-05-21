@@ -1,0 +1,157 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Load libraries
+
+```{r}
+library(tidyverse)
+```
+
+# Load csv
+
+```{r}
+sf_rent_df <- read_csv("sf_clean.csv") %>% 
+  drop_na() %>% 
+print(sf_rent_df)
+```
+
+# Create parking and prices data frame
+
+This data frame will not be sorted by number of bedrooms.
+
+```{r}
+simplified_df <- sf_rent_df %>% select(price, parking)
+print(simplified_df)
+```
+
+# Descriptive stats by type of parking
+
+using these descriptive stats, i was able to view mean median and mode rent prices within each parking category
+
+# Create data frames based on price for each parking category
+
+```{r}
+valet_df <- simplified_df %>% filter(parking == "(a) valet")
+protected_df <- simplified_df %>% filter(parking == "(b) protected")
+off_street_df <- simplified_df %>% filter(parking == "(c) off-street")
+no_parking_df <- simplified_df %>% filter(parking == "(d) no parking")
+
+summary(valet_df)
+summary(protected_df)
+summary(off_street_df)
+summary(no_parking_df)
+```
+
+## Comparing average rent price across the parking categories
+
+```{r}
+summary_parking_df <- simplified_df %>%
+  group_by(parking) %>%
+  summarise(mean_price = mean(price, na.rm = TRUE))
+```
+
+## Create a bar graph displaying the average rent prices in each parking category
+
+```{r}
+ggplot(summary_parking_df, aes(x = parking, y = mean_price, fill = parking)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("red", "hotpink", "purple", "blue")) +
+  labs(title = "Average Price for 1 bed by Parking",
+       x = "Parking",
+       y = "Average Price") +
+  theme_minimal()
+```
+
+# Inferential Statistics
+
+## Create linear regression for parking and price
+
+technique: Gaussian linear regression which is non-parametric and does not assume normal distribution null Hypothesis: parking has no effect on price alternative hypothesis: price is affected by parking availability
+
+```{r}
+glm(formula = price ~ parking , family = gaussian, data = simplified_df) %>%
+  summary()
+```
+
+## Conclusion from the Gaussian linear regression: 
+
+If valet parking is the baseline, the price of housing significantly decreases if parking is protected, on the street or not available at all.
+
+```{r}
+# Make sure 'parking' is treated as a factor (if it's categorical)
+simplified_df <- simplified_df %>%
+  mutate(parking = as.factor(parking))
+
+# Fit the model
+model <- glm(formula = price ~ parking, family = gaussian, data = simplified_df)
+
+# Get predicted values
+simplified_df <- simplified_df %>%
+  mutate(predicted_price = predict(model, type = "response"))
+
+# Plot actual data with model predictions
+ggplot(simplified_df, aes(x = parking, y = price, fill = parking)) +
+  geom_boxplot(alpha = 0.4) +
+  stat_summary(aes(y = predicted_price), fun = mean, geom = "point", 
+               shape = 21, color = "yellow", size = 3, fill = "yellow") +
+  scale_fill_manual(values = c("red", "hotpink", "purple", "blue")) +
+  labs(title = "GLM: Price ~ Parking",
+       subtitle = "Boxplot of Actual Prices with Predicted Means from GLM",
+       x = "Parking Type",
+       y = "Price") +
+  theme_minimal()
+```
+
+```{r}
+# Make sure 'parking' is a factor
+simplified_df <- simplified_df %>%
+  mutate(parking = as.factor(parking))
+
+# Fit the GLM model
+model <- glm(price ~ parking, family = gaussian, data = simplified_df)
+
+# Add predicted values to the dataset
+simplified_df <- simplified_df %>%
+  mutate(predicted_price = predict(model, type = "response"))
+
+# Calculate the mean predicted price for each parking type
+mean_predicted_prices <- simplified_df %>%
+  group_by(parking) %>%
+  summarise(mean_predicted_price = mean(predicted_price))
+
+
+
+# Calculate actual mean price for each parking type
+actual_means <- simplified_df %>%
+  group_by(parking) %>%
+  summarise(actual_mean = mean(price))
+
+# Now, make the plot
+ggplot(simplified_df, aes(x = parking, y = price, fill = parking)) +
+  geom_boxplot(alpha = 0.4) +
+  
+  # Predicted mean points from the GLM model
+  stat_summary(aes(y = predicted_price), fun = mean, geom = "point", 
+               shape = 21, color = "yellow", size = 3, fill = "yellow") +
+  
+  # Actual mean points from the dataset
+  geom_point(data = actual_means, aes(x = parking, y = actual_mean), 
+             shape = 21, color = "green", size = 3, fill = "green") +
+  
+  scale_fill_manual(values = c("red", "hotpink", "purple", "blue")) +
+  labs(title = "Comparison: Actual vs. Predicted Means for Price by Parking Type",
+       subtitle = "Boxplot of Actual Prices with Predicted and Actual Means",
+       x = "Parking Type",
+       y = "Price") +
+  theme_minimal()
+
+
+print(actual_means)
+print(mean_predicted_prices)
+```
+
+
+## Drawing conclusions from the box plot. 
+We were able to compare to predicted mean to the actual means and they seem to be in the same position making this model a good fit.  
